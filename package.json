@@ -1,0 +1,34 @@
+{
+  "name": "qms-qwap-testnet-bot",
+  "version": "1.0.0",
+  "description": "Automated Daily Swap, Liquidity Provision & Ultra-Lightweight Camoufox Faucet Bot for QMS Testnet (QWAP)",
+  "main": "index.js",
+  "scripts": {
+    "setup": "node setup.js",
+    "start": "node index.js",
+    "status": "node index.js --status",
+    "force": "node index.js --force",
+    "daemon": "node index.js --daemon",
+    "distribute": "node distribute.js",
+    "faucet": "node auto_faucet_relay.js",
+    "generate-wallet": "node index.js --generate-wallet"
+  },
+  "keywords": [
+    "qms",
+    "qwap",
+    "testnet",
+    "airdrop",
+    "bot",
+    "automation",
+    "quanta-points",
+    "camoufox",
+    "faucet"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "ethers": "^6.17.0",
+    "node-cron": "^4.2.1"
+  }
+}

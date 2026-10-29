@@ -1,0 +1,36 @@
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Sensitive Credentials & Private Data
+.env
+.env.*
+!.env.example
+wallets.json
+wallets*.json
+!wallets.example.json
+wallets.txt
+streak_history.json
+*.pem
+*.key
+*.keystore
+.last_temp_key.txt
+
+# Faucet Session Files & Caches
+current_session.txt
+*current_session*
+
+# Python & Browser Caches
+__pycache__/
+*.py[cod]
+*$py.class
+camoufox_cache/
+
+# OS & IDE metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
