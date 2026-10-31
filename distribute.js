@@ -37,10 +37,24 @@ async function distribute() {
     return;
   }
 
-  const transferAmount = ethers.parseEther("0.25");
-  const minThreshold = ethers.parseEther("0.1");
+  const args = process.argv.slice(2);
+  const isForce = args.includes("--force") || args.includes("-f") || args.includes("--all");
+  const amountIndex = args.indexOf("--amount");
+  const requestedAmount = amountIndex !== -1 && args[amountIndex + 1] ? parseFloat(args[amountIndex + 1]) : 0.25;
 
-  logger.info(`Memeriksa ${c.bYellow}${walletsData.length - 1} sub-wallet${c.reset} untuk pendanaan on-chain...\n`);
+  const transferAmount = ethers.parseEther(requestedAmount.toString());
+  const minThreshold = ethers.parseEther("0.1");
+  const gasReserve = ethers.parseEther("0.2"); // Simpan minimal 0.2 QMS untuk Main Wallet
+
+  const subWalletsCount = walletsData.length - 1;
+  const totalNeeded = transferAmount * BigInt(subWalletsCount);
+
+  logger.info(`Memeriksa ${c.bYellow}${subWalletsCount} sub-wallet${c.reset} untuk pendanaan on-chain...`);
+  if (isForce) {
+    logger.info(`Mode Distribusi Penuh (${c.bCyan}--all / --force${c.reset}): Mentransfer ${c.bGreen}${requestedAmount} QMS${c.reset} ke setiap sub-wallet.\n`);
+  } else {
+    logger.info(`Ambang Batas Minimum: ${c.bCyan}0.1 QMS${c.reset} (Gunakan ${c.yellow}--force${c.reset} untuk transfer ke semua wallet tanpa syarat).\n`);
+  }
 
   for (let i = 1; i < walletsData.length; i++) {
     const subData = walletsData[i];
@@ -49,33 +63,54 @@ async function distribute() {
     const subBalEth = parseFloat(ethers.formatEther(subBal));
     const displayName = subData.name || `Wallet ${i + 1}`;
 
-    logger.cardStart(i, walletsData.length - 1, displayName, subWallet.address);
+    logger.cardStart(i, subWalletsCount, displayName, subWallet.address);
     logger.cardItem("Address", `${c.bold}${subWallet.address}${c.reset}`, "👤");
-    logger.cardItem("Saldo", `${c.bCyan}${subBalEth.toFixed(4)} QMS${c.reset}`, "💰");
+    logger.cardItem("Saldo Saat Ini", `${c.bCyan}${subBalEth.toFixed(4)} QMS${c.reset}`, "💰");
 
-    if (subBal < minThreshold) {
-      logger.cardItem("Aksi", `${c.cyan}Mentransfer 0.25 QMS dari Main Wallet...${c.reset}`, "🚀");
+    const shouldTransfer = isForce || subBal < minThreshold;
 
-      const feeData = await provider.getFeeData();
-      const gasPrice = feeData.gasPrice || 1000000000n;
+    if (shouldTransfer) {
+      const currentMainBal = await provider.getBalance(mainWallet.address);
+      if (currentMainBal <= gasReserve + transferAmount) {
+        logger.cardItem("Status", `${c.red}Sisa saldo Main Wallet menipis (< ${ethers.formatEther(gasReserve)} QMS). Distribusi dihentikan demi keamanan.${c.reset}`, "⚠️");
+        logger.cardEnd();
+        break;
+      }
 
-      const tx = await mainWallet.sendTransaction({
-        to: subWallet.address,
-        value: transferAmount,
-        gasLimit: 21000n,
-        gasPrice: gasPrice
-      });
+      logger.cardItem("Aksi", `${c.cyan}Mentransfer ${requestedAmount} QMS dari Main Wallet...${c.reset}`, "🚀");
 
-      const shortTx = `${tx.hash.substring(0, 10)}...${tx.hash.substring(tx.hash.length - 8)}`;
-      logger.cardItem("Broadcast", `${c.dim}${config.EXPLORER_URL}/tx/${tx.hash}${c.reset}`, "📡");
+      try {
+        const feeData = await provider.getFeeData();
+        const gasPrice = feeData.gasPrice ? (feeData.gasPrice * 120n) / 100n : 1000000000n;
 
-      await tx.wait(1);
-      logger.cardItem("Status", `${c.bGreen}✔ Transfer 0.25 QMS berhasil!${c.reset} ${c.dim}(Tx: ${shortTx})${c.reset}`, "✔");
+        const tx = await mainWallet.sendTransaction({
+          to: subWallet.address,
+          value: transferAmount,
+          gasLimit: 21000n,
+          gasPrice: gasPrice
+        });
+
+        const shortTx = `${tx.hash.substring(0, 10)}...${tx.hash.substring(tx.hash.length - 8)}`;
+        logger.cardItem("Broadcast", `${c.dim}${config.EXPLORER_URL}/tx/${tx.hash}${c.reset}`, "📡");
+
+        await tx.wait(1);
+        const newBal = await provider.getBalance(subWallet.address);
+        const newBalEth = parseFloat(ethers.formatEther(newBal));
+        logger.cardItem("Status", `${c.bGreen}✔ Transfer ${requestedAmount} QMS Sukses!${c.reset} ${c.dim}(Tx: ${shortTx})${c.reset}`, "✔");
+        logger.cardItem("Saldo Baru", `${c.bYellow}${newBalEth.toFixed(4)} QMS${c.reset}`, "💳");
+      } catch (err) {
+        logger.cardItem("Status", `${c.red}Gagal transfer: ${err.message}${c.reset}`, "✖");
+      }
     } else {
-      logger.cardItem("Status", `${c.dim}Saldo sudah mencukupi (>= 0.1 QMS). Dilewati.${c.reset}`, "✔");
+      logger.cardItem("Status", `${c.dim}Saldo sudah mencukupi (>= 0.1 QMS). Dilewati (Gunakan --force untuk kirim ulang).${c.reset}`, "✔");
     }
 
     logger.cardEnd();
+
+    // Jeda 2 detik antar transfer agar nonce dan transaksi antri dengan rapi
+    if (i < walletsData.length - 1 && shouldTransfer) {
+      await new Promise(r => setTimeout(r, 2000));
+    }
   }
 
   const finalMainBal = await provider.getBalance(mainWallet.address);
